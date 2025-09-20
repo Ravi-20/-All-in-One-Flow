@@ -1,0 +1,318 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// User Management
+model User {
+  id          String   @id @default(cuid())
+  username    String   @unique
+  email       String   @unique
+  password    String
+  firstName   String
+  lastName    String
+  role        UserRole @default(OPERATOR)
+  department  String?
+  isActive    Boolean  @default(true)
+  permissions String   // JSON string of permissions array
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  createdOrders     ProductionOrder[] @relation("CreatedBy")
+  assignedWorkOrders WorkOrder[]      @relation("AssignedWorker")
+  qualityChecks     QualityCheck[]   @relation("Inspector")
+  stockMovements    StockMovement[]  @relation("MovedBy")
+  auditLogs         AuditLog[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  OPERATOR
+  INSPECTOR
+  VIEWER
+}
+
+// Production Management
+model ProductionOrder {
+  id            String               @id @default(cuid())
+  orderNumber   String               @unique
+  productName   String
+  productCode   String
+  description   String?
+  quantity      Int
+  status        ProductionStatus     @default(DRAFT)
+  priority      Priority             @default(MEDIUM)
+  startDate     DateTime?
+  dueDate       DateTime
+  completedDate DateTime?
+  progress      Float                @default(0)
+  estimatedCost Float
+  actualCost    Float                @default(0)
+  createdById   String
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  // Relations
+  createdBy         User                  @relation("CreatedBy", fields: [createdById], references: [id])
+  workOrders        WorkOrder[]
+  materialRequirements MaterialRequirement[]
+  qualityChecks     QualityCheck[]
+  
+  @@map("production_orders")
+}
+
+enum ProductionStatus {
+  DRAFT
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  ON_HOLD
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model WorkOrder {
+  id                 String           @id @default(cuid())
+  productionOrderId  String
+  workstation        String
+  operation          String
+  sequence           Int
+  status             WorkOrderStatus  @default(PENDING)
+  estimatedDuration  Int              // in minutes
+  actualDuration     Int?
+  startTime          DateTime?
+  endTime            DateTime?
+  assignedWorkerId   String?
+  notes              String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  // Relations
+  productionOrder ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  assignedWorker  User?           @relation("AssignedWorker", fields: [assignedWorkerId], references: [id])
+  qualityChecks   QualityCheck[]
+  
+  @@map("work_orders")
+}
+
+enum WorkOrderStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  ON_HOLD
+  CANCELLED
+}
+
+// Inventory Management
+model Material {
+  id           String    @id @default(cuid())
+  code         String    @unique
+  name         String
+  description  String?
+  category     String
+  unit         String
+  currentStock Float     @default(0)
+  minimumStock Float     @default(0)
+  maximumStock Float     @default(0)
+  unitCost     Float
+  supplier     String?
+  location     String?
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  // Relations
+  stockMovements       StockMovement[]
+  materialRequirements MaterialRequirement[]
+  
+  @@map("materials")
+}
+
+model MaterialRequirement {
+  id                 String          @id @default(cuid())
+  productionOrderId  String
+  materialId         String
+  requiredQuantity   Float
+  allocatedQuantity  Float           @default(0)
+  consumedQuantity   Float           @default(0)
+  status             RequirementStatus @default(PENDING)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  // Relations
+  productionOrder ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  material        Material        @relation(fields: [materialId], references: [id])
+  
+  @@unique([productionOrderId, materialId])
+  @@map("material_requirements")
+}
+
+enum RequirementStatus {
+  PENDING
+  ALLOCATED
+  PARTIALLY_CONSUMED
+  CONSUMED
+}
+
+model StockMovement {
+  id         String         @id @default(cuid())
+  materialId String
+  type       MovementType
+  quantity   Float
+  reason     String
+  reference  String?        // Reference to order, adjustment, etc.
+  userId     String
+  timestamp  DateTime       @default(now())
+
+  // Relations
+  material Material @relation(fields: [materialId], references: [id])
+  user     User     @relation("MovedBy", fields: [userId], references: [id])
+  
+  @@map("stock_movements")
+}
+
+enum MovementType {
+  IN
+  OUT
+  ADJUSTMENT
+  TRANSFER
+}
+
+// Quality Control
+model QualityCheck {
+  id                String           @id @default(cuid())
+  productionOrderId String?
+  workOrderId       String?
+  checkPoint        String
+  inspectorId       String
+  status            QualityStatus    @default(PENDING)
+  checkDate         DateTime         @default(now())
+  notes             String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  // Relations
+  productionOrder ProductionOrder? @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  workOrder       WorkOrder?       @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  inspector       User             @relation("Inspector", fields: [inspectorId], references: [id])
+  parameters      QualityParameter[]
+  defects         Defect[]
+  
+  @@map("quality_checks")
+}
+
+enum QualityStatus {
+  PENDING
+  PASSED
+  FAILED
+  REWORK_REQUIRED
+}
+
+model QualityParameter {
+  id             String       @id @default(cuid())
+  qualityCheckId String
+  name           String
+  specification  String
+  actualValue    String
+  status         ParameterStatus
+  tolerance      String?
+  createdAt      DateTime     @default(now())
+
+  // Relations
+  qualityCheck QualityCheck @relation(fields: [qualityCheckId], references: [id], onDelete: Cascade)
+  
+  @@map("quality_parameters")
+}
+
+enum ParameterStatus {
+  PASS
+  FAIL
+  WARNING
+}
+
+model Defect {
+  id             String       @id @default(cuid())
+  qualityCheckId String?
+  type           String
+  description    String
+  severity       DefectSeverity
+  quantity       Int
+  action         DefectAction
+  status         DefectStatus @default(OPEN)
+  reportedAt     DateTime     @default(now())
+  resolvedAt     DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  // Relations
+  qualityCheck QualityCheck? @relation(fields: [qualityCheckId], references: [id], onDelete: SetNull)
+  
+  @@map("defects")
+}
+
+enum DefectSeverity {
+  MINOR
+  MAJOR
+  CRITICAL
+}
+
+enum DefectAction {
+  REWORK
+  SCRAP
+  ACCEPT
+  QUARANTINE
+}
+
+enum DefectStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+// System & Audit
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String
+  entity    String   // table name
+  entityId  String   // record id
+  oldData   String?  // JSON
+  newData   String?  // JSON
+  timestamp DateTime @default(now())
+  ipAddress String?
+  userAgent String?
+
+  // Relations
+  user User @relation(fields: [userId], references: [id])
+  
+  @@map("audit_logs")
+}
+
+model SystemSettings {
+  id    String @id @default(cuid())
+  key   String @unique
+  value String
+  type  String // string, number, boolean, json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("system_settings")
+}
