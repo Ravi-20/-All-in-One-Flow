@@ -1,3 +1,6 @@
+▶ [Watch the demo video](https://drive.google.com/file/d/1Q88Lgm0vMk0M5dMWaNA4lkVmein2b9Nk/view?usp=sharing)
+
+
 # ManufactureFlow - Manufacturing Management System
 
 A comprehensive, modular manufacturing management application that enables businesses to create, track, and manage their end-to-end production process digitally. This platform replaces fragmented spreadsheets and manual tracking with a unified, real-time system.
@@ -194,5 +197,6 @@ The application is designed for easy deployment:
 - Multi-tenant support
 
 ---
+
 
 Built with ❤️ for modern manufacturing management.
